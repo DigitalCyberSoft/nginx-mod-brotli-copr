@@ -51,11 +51,12 @@ srpm:
 	\
 	echo "=== Extracting ngx_brotli to get submodules info ==="; \
 	tar xzf ngx_brotli-$(BROTLI_VERSION).tar.gz; \
-	cd ngx_brotli-*/ && git init && git remote add origin https://github.com/google/ngx_brotli.git && \
-	git fetch --depth=1 origin $(BROTLI_VERSION) && git checkout FETCH_HEAD && \
+	mv ngx_brotli-*/ ngx_brotli-temp/; \
+	cd ngx_brotli-temp/ && git init && git remote add origin https://github.com/google/ngx_brotli.git && \
+	git fetch --depth=1 origin $(BROTLI_VERSION) && git reset --hard FETCH_HEAD && \
 	git submodule update --init --recursive && cd ..; \
-	tar czf ngx_brotli-$(BROTLI_VERSION)-full.tar.gz ngx_brotli-*/ || exit 1; \
-	rm -rf ngx_brotli-*/; \
+	tar czf ngx_brotli-$(BROTLI_VERSION)-full.tar.gz ngx_brotli-temp/ --transform='s/ngx_brotli-temp/ngx_brotli-$(BROTLI_VERSION)/' || exit 1; \
+	rm -rf ngx_brotli-temp/; \
 	\
 	echo "=== Generating spec file ==="; \
 	( \
