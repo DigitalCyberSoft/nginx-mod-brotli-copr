@@ -29,15 +29,17 @@ srpm:
 		fi; \
 	fi
 	
-	# Try to detect nginx version from repos
+	# Try to detect nginx version and epoch from repos
 	@if command -v dnf >/dev/null 2>&1; then \
-		echo "=== Detecting nginx version from repos ==="; \
+		echo "=== Detecting nginx version and epoch from repos ==="; \
 		NGINX_VER=$$(dnf repoquery --latest-limit=1 --qf="%{version}" nginx 2>/dev/null || echo "$(NGINX_VERSION)"); \
+		NGINX_EPOCH=$$(dnf repoquery --latest-limit=1 --qf="%{epoch}" nginx 2>/dev/null || echo "2"); \
 	else \
 		echo "=== Using default nginx version ==="; \
 		NGINX_VER="$(NGINX_VERSION)"; \
+		NGINX_EPOCH="2"; \
 	fi; \
-	echo "Using nginx version: $$NGINX_VER"; \
+	echo "Using nginx version: $$NGINX_VER with epoch: $$NGINX_EPOCH"; \
 	\
 	echo "=== Downloading nginx source ==="; \
 	if ! curl -L -o nginx-$$NGINX_VER.tar.gz http://nginx.org/download/nginx-$$NGINX_VER.tar.gz 2>/dev/null; then \
@@ -103,9 +105,9 @@ srpm:
 	echo 'BuildRequires:     libxslt-devel'; \
 	echo 'BuildRequires:     systemd'; \
 	echo ''; \
-	echo 'Requires:          nginx = %{epoch}:%{nginx_ver}'; \
-	echo 'Conflicts:         nginx > %{epoch}:%{nginx_ver}'; \
-	echo 'Conflicts:         nginx < %{epoch}:%{nginx_ver}'; \
+	echo "Requires:          nginx = $$NGINX_EPOCH:%{nginx_ver}"; \
+	echo "Conflicts:         nginx > $$NGINX_EPOCH:%{nginx_ver}"; \
+	echo "Conflicts:         nginx < $$NGINX_EPOCH:%{nginx_ver}"; \
 	echo 'Requires(post):    systemd'; \
 	echo ''; \
 	echo '%description'; \
