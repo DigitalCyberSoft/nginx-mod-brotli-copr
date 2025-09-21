@@ -89,8 +89,12 @@ srpm:
 	echo 'BuildRequires:     gcc-c++'; \
 	echo 'BuildRequires:     make'; \
 	echo 'BuildRequires:     openssl-devel'; \
+	echo '%if 0%{?rhel} >= 10 || 0%{?fedora} >= 37'; \
+	echo 'BuildRequires:     pcre2-devel'; \
+	echo '%else'; \
 	echo 'BuildRequires:     pcre-devel'; \
 	echo 'BuildRequires:     pcre2-devel'; \
+	echo '%endif'; \
 	echo 'BuildRequires:     zlib-devel'; \
 	echo 'BuildRequires:     cmake'; \
 	echo ''; \
