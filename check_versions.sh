@@ -7,7 +7,6 @@ set -e
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSIONS_FILE="$SCRIPT_DIR/versions.json"
-DEFAULT_NGINX_VERSION="1.28.0"
 
 # Parse command line arguments
 MODE="check"
@@ -59,12 +58,16 @@ get_nginx_version() {
     # Query the Fedora nginx spec directly. The previous dnf approach returned
     # nothing on non-Fedora CI runners (no Fedora repos), so the check silently
     # fell back to the default and never detected real updates.
-    version=$(curl -sf "https://src.fedoraproject.org/rpms/nginx/raw/rawhide/f/nginx.spec" 2>/dev/null \
+    version=$(curl -sf --connect-timeout 15 --max-time 60 --retry 3 --retry-all-errors \
+        "https://src.fedoraproject.org/rpms/nginx/raw/rawhide/f/nginx.spec" 2>/dev/null \
         | sed -n 's/^Version:[[:space:]]*//p' | head -1)
 
+    # Hard-fail when the version cannot be determined. Falling back to a
+    # hardcoded default committed fabricated downgrades (nginx 1.28.2 ->
+    # 1.28.0 on 2026-05-22) and triggered spurious COPR rebuild pairs.
     if [ -z "$version" ]; then
-        echo "Warning: Could not query nginx version from Fedora repos, using default" >&2
-        version="$DEFAULT_NGINX_VERSION"
+        echo "Error: could not determine nginx version from Fedora spec" >&2
+        return 1
     fi
 
     echo "$version"
@@ -183,7 +186,12 @@ if [ $VERSION_CHANGED -eq 1 ]; then
         echo "Run with --update to apply changes"
     fi
 
-    exit 1  # Exit with error code to indicate changes available
+    # update mode: a successful apply is success; exit 1 only signals
+    # "changes available" to check-only callers (manual use)
+    if [ "$MODE" = "update" ] && [ $DRY_RUN -eq 0 ]; then
+        exit 0
+    fi
+    exit 1
 else
     echo "=== No version change detected ==="
     echo "  nginx: $CURRENT_NGINX (unchanged)"
