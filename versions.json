@@ -1,8 +1,8 @@
 {
   "nginx": {
-    "version": "1.30.3",
+    "version": "1.30.4",
     "source": "fedora",
-    "last_checked": "2026-06-18T04:09:38Z"
+    "last_checked": "2026-07-20T03:18:42Z"
   },
-  "last_update": "2026-06-18T04:09:38Z"
+  "last_update": "2026-07-20T03:18:42Z"
 }
