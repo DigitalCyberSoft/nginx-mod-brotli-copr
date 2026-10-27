@@ -7,8 +7,14 @@ outdir ?= .
 # Default nginx version if detection fails
 NGINX_VERSION ?= 1.28.0
 
-# ngx_brotli version (using latest release)
-BROTLI_VERSION = v1.0.0rc
+# ngx_brotli has no release newer than v1.0.0rc (2020, bundles brotli 1.0.7);
+# pin a master commit instead. 53e0fb5 bundles brotli v1.2.1 (CVE-2026-111497).
+NGX_BROTLI_COMMIT = 53e0fb55f250f48fe80c0ddbf6c0f7103cdbaae1
+BROTLI_VERSION = git$(shell echo $(NGX_BROTLI_COMMIT) | cut -c1-7)
+
+# Bump when the bundled ngx_brotli/brotli changes without an nginx version
+# change, so dnf sees a newer NVR
+RELEASE = 2
 
 # Default target for COPR
 srpm:
@@ -49,14 +55,17 @@ srpm:
 	fi; \
 	\
 	echo "=== Downloading ngx_brotli $(BROTLI_VERSION) ==="; \
-	curl -L -o ngx_brotli-$(BROTLI_VERSION).tar.gz https://github.com/google/ngx_brotli/archive/$(BROTLI_VERSION).tar.gz || exit 1; \
+	curl -L -o ngx_brotli-$(BROTLI_VERSION).tar.gz https://github.com/google/ngx_brotli/archive/$(NGX_BROTLI_COMMIT).tar.gz || exit 1; \
 	\
 	echo "=== Extracting ngx_brotli to get submodules info ==="; \
 	tar xzf ngx_brotli-$(BROTLI_VERSION).tar.gz; \
 	mv ngx_brotli-*/ ngx_brotli-temp/; \
 	cd ngx_brotli-temp/ && git init && git remote add origin https://github.com/google/ngx_brotli.git && \
-	git fetch --depth=1 origin $(BROTLI_VERSION) && git reset --hard FETCH_HEAD && \
-	git submodule update --init --recursive && cd ..; \
+	git fetch --depth=1 origin $(NGX_BROTLI_COMMIT) && git reset --hard FETCH_HEAD && \
+	git submodule update --init --recursive && cd .. || exit 1; \
+	BUNDLED_BROTLI=$$(sed -n 's/^#define BROTLI_VERSION_\(MAJOR\|MINOR\|PATCH\) \([0-9]*\)$$/\2/p' ngx_brotli-temp/deps/brotli/c/common/version.h | paste -sd.); \
+	echo "Bundled brotli version: $$BUNDLED_BROTLI"; \
+	test -n "$$BUNDLED_BROTLI" || { echo "ERROR: could not read bundled brotli version"; exit 1; }; \
 	tar czf ngx_brotli-$(BROTLI_VERSION)-full.tar.gz ngx_brotli-temp/ --transform='s/ngx_brotli-temp/ngx_brotli-$(BROTLI_VERSION)/' || exit 1; \
 	rm -rf ngx_brotli-temp/; \
 	\
@@ -77,7 +86,7 @@ srpm:
 	echo 'Name:              nginx-mod-brotli'; \
 	echo 'Epoch:             1'; \
 	echo 'Version:           %{nginx_ver}'; \
-	echo 'Release:           1%{?dist}'; \
+	echo 'Release:           $(RELEASE)%{?dist}'; \
 	echo ''; \
 	echo 'Summary:           Brotli compression module for nginx'; \
 	echo 'License:           BSD-2-Clause'; \
@@ -113,6 +122,7 @@ srpm:
 	echo "Conflicts:         nginx > $$NGINX_EPOCH:%{nginx_ver}"; \
 	echo "Conflicts:         nginx < $$NGINX_EPOCH:%{nginx_ver}"; \
 	echo 'Requires(post):    systemd'; \
+	echo "Provides:          bundled(brotli) = $$BUNDLED_BROTLI"; \
 	echo ''; \
 	echo '%description'; \
 	echo 'Brotli is a generic-purpose lossless compression algorithm that compresses'; \
@@ -125,6 +135,14 @@ srpm:
 	echo 'mv ngx_brotli-* ngx_brotli'; \
 	echo ''; \
 	echo '%build'; \
+	echo '# ngx_brotli links prebuilt static brotli libraries from deps/brotli/out'; \
+	echo 'cmake -S ngx_brotli/deps/brotli -B ngx_brotli/deps/brotli/out \'; \
+	echo '    -DCMAKE_BUILD_TYPE=Release \'; \
+	echo '    -DBUILD_SHARED_LIBS=OFF \'; \
+	echo '    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \'; \
+	echo '    -DCMAKE_C_FLAGS="%{optflags}"'; \
+	echo 'cmake --build ngx_brotli/deps/brotli/out --target brotlienc -- %{?_smp_mflags}'; \
+	echo ''; \
 	echo 'export DESTDIR=%{buildroot}'; \
 	echo './configure \'; \
 	echo '    --prefix=%{_datadir}/nginx \'; \
@@ -206,10 +224,10 @@ srpm:
 	echo '%{_libdir}/nginx/modules/ngx_http_brotli_static_module.so'; \
 	echo ''; \
 	echo '%changelog'; \
-	echo "* $$(date '+%a %b %d %Y') COPR Builder - %{nginx_ver}-1"; \
+	echo "* $$(date '+%a %b %d %Y') COPR Builder - %{nginx_ver}-$(RELEASE)"; \
 	echo '- Automated build from GitHub'; \
 	echo '- Built against nginx version %{nginx_ver}'; \
-	echo '- Using ngx_brotli release %{brotli_ver}'; \
+	echo "- Using ngx_brotli commit $(NGX_BROTLI_COMMIT) (bundled brotli $$BUNDLED_BROTLI)"; \
 	) > nginx-mod-brotli.spec || exit 1; \
 	echo "Spec file generated"; \
 	\
